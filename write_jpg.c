@@ -40,6 +40,17 @@ int write_to_jpeg_stream(pixman_image_t *image, FILE *stream, int quality) {
 	jpeg_set_defaults(&cinfo);
 	jpeg_set_quality(&cinfo, quality, TRUE);
 
+	// Ensure 444 subsampling instead of 420; this significantly improves
+	// the accuracy with which colored text and single pixel features are
+	// rendered. Probably due to sRGB-incorrect blending, chroma subsampling
+	// can introduce significant visible changes in brightness, even at 100%
+	// quality. Note that anyone editing and resaving the image as 420 may
+	// encounter these issues again.
+	for (int i = 0; i < cinfo.num_components; i++) {
+		cinfo.comp_info[i].h_samp_factor = 1;
+		cinfo.comp_info[i].v_samp_factor = 1;
+	}
+
 	jpeg_start_compress(&cinfo, TRUE);
 
 	while (cinfo.next_scanline < cinfo.image_height) {
