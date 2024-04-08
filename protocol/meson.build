@@ -1,4 +1,4 @@
-wayland_protos = dependency('wayland-protocols', version: '>=1.14')
+wayland_protos = dependency('wayland-protocols', version: '>=1.37')
 wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
 
 wayland_scanner = dependency('wayland-scanner', version: '>=1.14.91', native: true)
@@ -18,6 +18,9 @@ wayland_scanner_client = generator(
 )
 
 protocols = [
+	wl_protocol_dir / 'staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml',
+	wl_protocol_dir / 'staging/ext-image-capture-source/ext-image-capture-source-v1.xml',
+	wl_protocol_dir / 'staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml',
 	wl_protocol_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
 	'wlr-screencopy-unstable-v1.xml',
 ]

@@ -89,6 +89,15 @@ static pixman_format_code_t get_pixman_format(enum wl_shm_format wl_fmt) {
 	}
 }
 
+bool is_format_supported(enum wl_shm_format fmt) {
+	return get_pixman_format(fmt) != 0;
+}
+
+uint32_t get_format_min_stride(enum wl_shm_format fmt, uint32_t width) {
+	uint32_t bits_per_pixel = PIXMAN_FORMAT_BPP(get_pixman_format(fmt));
+	return ((width * bits_per_pixel + 0x1f) >> 5) * sizeof(uint32_t);
+}
+
 static void compute_composite_region(const struct pixman_f_transform *out2com,
 		int output_width, int output_height, struct grim_box *dest,
 		bool *grid_aligned) {

@@ -20,6 +20,8 @@
 #endif
 #include "write_png.h"
 
+#include "ext-image-capture-source-v1-protocol.h"
+#include "ext-image-copy-capture-v1-protocol.h"
 #include "wlr-screencopy-unstable-v1-protocol.h"
 #include "xdg-output-unstable-v1-protocol.h"
 
@@ -63,6 +65,122 @@ static const struct zwlr_screencopy_frame_v1_listener screencopy_frame_listener 
 	.flags = screencopy_frame_handle_flags,
 	.ready = screencopy_frame_handle_ready,
 	.failed = screencopy_frame_handle_failed,
+};
+
+
+static void ext_image_copy_capture_frame_handle_transform(void *data,
+		struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform) {
+	struct grim_output *output = data;
+	output->transform = transform;
+}
+
+static void ext_image_copy_capture_frame_handle_damage(void *data,
+		struct ext_image_copy_capture_frame_v1 *frame, int32_t x, int32_t y,
+		int32_t wdth, int32_t height) {
+	// No-op
+}
+
+static void ext_image_copy_capture_frame_handle_presentation_time(void *data,
+		struct ext_image_copy_capture_frame_v1 *frame, uint32_t tv_sec_hi,
+		uint32_t tv_sec_lo, uint32_t tv_nsec) {
+	// No-op
+}
+
+static void ext_image_copy_capture_frame_handle_ready(void *data,
+		struct ext_image_copy_capture_frame_v1 *frame) {
+	struct grim_output *output = data;
+	++output->state->n_done;
+}
+
+static void ext_image_copy_capture_frame_handle_failed(void *data,
+		struct ext_image_copy_capture_frame_v1 *frame, uint32_t reason) {
+	// TODO: retry depending on reason
+	struct grim_output *output = data;
+	fprintf(stderr, "failed to copy output %s\n", output->name);
+	exit(EXIT_FAILURE);
+}
+
+static const struct ext_image_copy_capture_frame_v1_listener ext_image_copy_capture_frame_listener = {
+	.transform = ext_image_copy_capture_frame_handle_transform,
+	.damage = ext_image_copy_capture_frame_handle_damage,
+	.presentation_time = ext_image_copy_capture_frame_handle_presentation_time,
+	.ready = ext_image_copy_capture_frame_handle_ready,
+	.failed = ext_image_copy_capture_frame_handle_failed,
+};
+
+static void ext_image_copy_capture_session_handle_buffer_size(void *data,
+		struct ext_image_copy_capture_session_v1 *session, uint32_t width, uint32_t height) {
+	struct grim_output *output = data;
+	output->buffer_width = width;
+	output->buffer_height = height;
+}
+
+static void ext_image_copy_capture_session_handle_shm_format(void *data,
+		struct ext_image_copy_capture_session_v1 *session, uint32_t format) {
+	struct grim_output *output = data;
+
+	if (output->has_shm_format || !is_format_supported(format)) {
+		return;
+	}
+
+	output->shm_format = format;
+	output->has_shm_format = true;
+}
+
+static void ext_image_copy_capture_session_handle_dmabuf_device(void *data,
+		struct ext_image_copy_capture_session_v1 *session, struct wl_array *dev_id_array) {
+	// No-op
+}
+
+static void ext_image_copy_capture_session_handle_dmabuf_format(void *data,
+		struct ext_image_copy_capture_session_v1 *session, uint32_t format,
+		struct wl_array *modifiers_array) {
+	// No-op
+}
+
+static void ext_image_copy_capture_session_handle_done(void *data,
+		struct ext_image_copy_capture_session_v1 *session) {
+	struct grim_output *output = data;
+
+	if (output->ext_image_copy_capture_frame != NULL) {
+		return;
+	}
+
+	if (!output->has_shm_format) {
+		fprintf(stderr, "no supported format found\n");
+		exit(EXIT_FAILURE);
+	}
+
+	int32_t stride = get_format_min_stride(output->shm_format, output->buffer_width);
+	output->buffer =
+		create_buffer(output->state->shm, output->shm_format, output->buffer_width, output->buffer_height, stride);
+	if (output->buffer == NULL) {
+		fprintf(stderr, "failed to create buffer\n");
+		exit(EXIT_FAILURE);
+	}
+
+	output->ext_image_copy_capture_frame = ext_image_copy_capture_session_v1_create_frame(session);
+	ext_image_copy_capture_frame_v1_add_listener(output->ext_image_copy_capture_frame,
+		&ext_image_copy_capture_frame_listener, output);
+
+	ext_image_copy_capture_frame_v1_attach_buffer(output->ext_image_copy_capture_frame, output->buffer->wl_buffer);
+	ext_image_copy_capture_frame_v1_damage_buffer(output->ext_image_copy_capture_frame,
+		0, 0, INT32_MAX, INT32_MAX);
+	ext_image_copy_capture_frame_v1_capture(output->ext_image_copy_capture_frame);
+}
+
+static void ext_image_copy_capture_session_handle_stopped(void *data,
+		struct ext_image_copy_capture_session_v1 *session) {
+	// No-op
+}
+
+static const struct ext_image_copy_capture_session_v1_listener ext_image_copy_capture_session_listener = {
+	.buffer_size = ext_image_copy_capture_session_handle_buffer_size,
+	.shm_format = ext_image_copy_capture_session_handle_shm_format,
+	.dmabuf_device = ext_image_copy_capture_session_handle_dmabuf_device,
+	.dmabuf_format = ext_image_copy_capture_session_handle_dmabuf_format,
+	.done = ext_image_copy_capture_session_handle_done,
+	.stopped = ext_image_copy_capture_session_handle_stopped,
 };
 
 
@@ -170,6 +288,12 @@ static void handle_global(void *data, struct wl_registry *registry,
 			&wl_output_interface, 3);
 		wl_output_add_listener(output->wl_output, &output_listener, output);
 		wl_list_insert(&state->outputs, &output->link);
+	} else if (strcmp(interface, ext_output_image_capture_source_manager_v1_interface.name) == 0) {
+		state->ext_output_image_capture_source_manager = wl_registry_bind(registry, name,
+			&ext_output_image_capture_source_manager_v1_interface, 1);
+	} else if (strcmp(interface, ext_image_copy_capture_manager_v1_interface.name) == 0) {
+		state->ext_image_copy_capture_manager = wl_registry_bind(registry, name,
+			&ext_image_copy_capture_manager_v1_interface, 1);
 	} else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
 		state->screencopy_manager = wl_registry_bind(registry, name,
 			&zwlr_screencopy_manager_v1_interface, 1);
@@ -479,8 +603,9 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "compositor doesn't support wl_shm\n");
 		return EXIT_FAILURE;
 	}
-	if (state.screencopy_manager == NULL) {
-		fprintf(stderr, "compositor doesn't support wlr-screencopy-unstable-v1\n");
+	if ((state.ext_output_image_capture_source_manager == NULL || state.ext_image_copy_capture_manager == NULL) &&
+			state.screencopy_manager == NULL) {
+		fprintf(stderr, "compositor doesn't support the screencopy protocol\n");
 		return EXIT_FAILURE;
 	}
 	if (wl_list_empty(&state.outputs)) {
@@ -539,10 +664,24 @@ int main(int argc, char *argv[]) {
 			scale = output->logical_scale;
 		}
 
-		output->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
-			state.screencopy_manager, with_cursor, output->wl_output);
-		zwlr_screencopy_frame_v1_add_listener(output->screencopy_frame,
-			&screencopy_frame_listener, output);
+		if (state.ext_output_image_capture_source_manager != NULL) {
+			uint32_t options = 0;
+			if (with_cursor) {
+				options |= EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS;
+			}
+			struct ext_image_capture_source_v1 *source = ext_output_image_capture_source_manager_v1_create_source(
+				state.ext_output_image_capture_source_manager, output->wl_output);
+			output->ext_image_copy_capture_session = ext_image_copy_capture_manager_v1_create_session(
+				state.ext_image_copy_capture_manager, source, options);
+			ext_image_copy_capture_session_v1_add_listener(output->ext_image_copy_capture_session,
+				&ext_image_copy_capture_session_listener, output);
+			ext_image_capture_source_v1_destroy(source);
+		} else {
+			output->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
+				state.screencopy_manager, with_cursor, output->wl_output);
+			zwlr_screencopy_frame_v1_add_listener(output->screencopy_frame,
+				&screencopy_frame_listener, output);
+		}
 
 		++n_pending;
 	}
@@ -615,6 +754,12 @@ int main(int argc, char *argv[]) {
 	wl_list_for_each_safe(output, output_tmp, &state.outputs, link) {
 		wl_list_remove(&output->link);
 		free(output->name);
+		if (output->ext_image_copy_capture_frame != NULL) {
+			ext_image_copy_capture_frame_v1_destroy(output->ext_image_copy_capture_frame);
+		}
+		if (output->ext_image_copy_capture_session != NULL) {
+			ext_image_copy_capture_session_v1_destroy(output->ext_image_copy_capture_session);
+		}
 		if (output->screencopy_frame != NULL) {
 			zwlr_screencopy_frame_v1_destroy(output->screencopy_frame);
 		}
@@ -625,7 +770,15 @@ int main(int argc, char *argv[]) {
 		wl_output_release(output->wl_output);
 		free(output);
 	}
-	zwlr_screencopy_manager_v1_destroy(state.screencopy_manager);
+	if (state.ext_output_image_capture_source_manager != NULL) {
+		ext_output_image_capture_source_manager_v1_destroy(state.ext_output_image_capture_source_manager);
+	}
+	if (state.ext_image_copy_capture_manager != NULL) {
+		ext_image_copy_capture_manager_v1_destroy(state.ext_image_copy_capture_manager);
+	}
+	if (state.screencopy_manager != NULL) {
+		zwlr_screencopy_manager_v1_destroy(state.screencopy_manager);
+	}
 	if (state.xdg_output_manager != NULL) {
 		zxdg_output_manager_v1_destroy(state.xdg_output_manager);
 	}

@@ -16,6 +16,8 @@ struct grim_state {
 	struct wl_registry *registry;
 	struct wl_shm *shm;
 	struct zxdg_output_manager_v1 *xdg_output_manager;
+	struct ext_output_image_capture_source_manager_v1 *ext_output_image_capture_source_manager;
+	struct ext_image_copy_capture_manager_v1 *ext_image_copy_capture_manager;
 	struct zwlr_screencopy_manager_v1 *screencopy_manager;
 	struct wl_list outputs;
 
@@ -39,6 +41,13 @@ struct grim_output {
 	char *name;
 
 	struct grim_buffer *buffer;
+
+	struct ext_image_copy_capture_session_v1 *ext_image_copy_capture_session;
+	struct ext_image_copy_capture_frame_v1 *ext_image_copy_capture_frame;
+	uint32_t buffer_width, buffer_height;
+	enum wl_shm_format shm_format;
+	bool has_shm_format;
+
 	struct zwlr_screencopy_frame_v1 *screencopy_frame;
 	uint32_t screencopy_frame_flags; // enum zwlr_screencopy_frame_v1_flags
 };
