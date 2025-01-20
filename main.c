@@ -214,6 +214,9 @@ static void xdg_output_handle_done(void *data,
 static void xdg_output_handle_name(void *data,
 		struct zxdg_output_v1 *xdg_output, const char *name) {
 	struct grim_output *output = data;
+	if (output->name) {
+		return; // prefer wl_output.name if available
+	}
 	output->name = strdup(name);
 }
 
@@ -262,11 +265,24 @@ static void output_handle_scale(void *data, struct wl_output *wl_output,
 	output->scale = factor;
 }
 
+static void output_handle_name(void *data, struct wl_output *wl_output,
+		const char *name) {
+	struct grim_output *output = data;
+	output->name = strdup(name);
+}
+
+static void output_handle_description(void *data, struct wl_output *wl_output,
+		const char *description) {
+	// No-op
+}
+
 static const struct wl_output_listener output_listener = {
 	.geometry = output_handle_geometry,
 	.mode = output_handle_mode,
 	.done = output_handle_done,
 	.scale = output_handle_scale,
+	.name = output_handle_name,
+	.description = output_handle_description,
 };
 
 
@@ -281,11 +297,12 @@ static void handle_global(void *data, struct wl_registry *registry,
 		state->xdg_output_manager = wl_registry_bind(registry, name,
 			&zxdg_output_manager_v1_interface, bind_version);
 	} else if (strcmp(interface, wl_output_interface.name) == 0) {
+		uint32_t bind_version = (version >= 4) ? 4 : 3;
 		struct grim_output *output = calloc(1, sizeof(struct grim_output));
 		output->state = state;
 		output->scale = 1;
 		output->wl_output =  wl_registry_bind(registry, name,
-			&wl_output_interface, 3);
+			&wl_output_interface, bind_version);
 		wl_output_add_listener(output->wl_output, &output_listener, output);
 		wl_list_insert(&state->outputs, &output->link);
 	} else if (strcmp(interface, ext_output_image_capture_source_manager_v1_interface.name) == 0) {
