@@ -82,7 +82,7 @@ installation (in `/usr/local` by default), run `ninja -C build install`.
 
 ## Contributing
 
-Report bugs on the [issue tracker], send patches on the [mailing list].
+Report bugs and send patches on [GitLab].
 
 Join the IRC channel: [#emersion on Libera Chat].
 
@@ -91,6 +91,5 @@ Join the IRC channel: [#emersion on Libera Chat].
 MIT
 
 [slurp]: https://github.com/emersion/slurp
-[issue tracker]: https://todo.sr.ht/~emersion/grim
-[mailing list]: https://lists.sr.ht/~emersion/grim-dev
+[GitLab]: https://gitlab.freedesktop.org/emersion/grim
 [#emersion on Libera Chat]: ircs://irc.libera.chat/#emersion
