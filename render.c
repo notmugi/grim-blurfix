@@ -171,10 +171,9 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 		int32_t output_width = output->logical_geometry.width;
 		int32_t output_height = output->logical_geometry.height;
 
-		int32_t raw_output_width = output->geometry.width;
-		int32_t raw_output_height = output->geometry.height;
-		apply_output_transform(output->transform,
-			&raw_output_width, &raw_output_height);
+		int32_t raw_output_width = buffer->width;
+		int32_t raw_output_height = buffer->height;
+		apply_output_transform(output->transform, &raw_output_width, &raw_output_height);
 
 		int output_flipped_x = get_output_flipped(output->transform);
 		int output_flipped_y = output->screencopy_frame_flags &
@@ -193,8 +192,8 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 		struct pixman_f_transform out2com;
 		pixman_f_transform_init_identity(&out2com);
 		pixman_f_transform_translate(&out2com, NULL,
-			-(double)output->geometry.width / 2,
-			-(double)output->geometry.height / 2);
+			-(double)buffer->width / 2,
+			-(double)buffer->height / 2);
 		pixman_f_transform_scale(&out2com, NULL,
 			(double)output_width / raw_output_width,
 			(double)output_height * output_flipped_y / raw_output_height);
