@@ -572,6 +572,11 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	if (geometry_output != NULL && geometry != NULL) {
+		fprintf(stderr, "-o and -g are mutually exclusive\n");
+		return EXIT_FAILURE;
+	}
+
 	const char *output_filename;
 	char *output_filepath;
 	char tmp[64];
