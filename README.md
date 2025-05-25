@@ -51,7 +51,7 @@ Grab a screenshot from the focused window under Sway, using `swaymsg` and
 `jq`:
 
 ```sh
-grim -g "$(swaymsg -t get_tree | jq -j '.. | select(.type?) | select(.focused).rect | "\(.x),\(.y) \(.width)x\(.height)"')"
+grim -T "$(swaymsg -t get_tree | jq -j '.. | select(.type?) | select(.focused).foreign_toplevel_identifier')"
 ```
 
 Pick a color, using ImageMagick:

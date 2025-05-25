@@ -20,6 +20,7 @@
 #endif
 #include "write_png.h"
 
+#include "ext-foreign-toplevel-list-v1-protocol.h"
 #include "ext-image-capture-source-v1-protocol.h"
 #include "ext-image-copy-capture-v1-protocol.h"
 #include "wlr-screencopy-unstable-v1-protocol.h"
@@ -113,6 +114,12 @@ static void ext_image_copy_capture_session_handle_buffer_size(void *data,
 	struct grim_capture *capture = data;
 	capture->buffer_width = width;
 	capture->buffer_height = height;
+
+	if (capture->output == NULL) {
+		// TODO: improve this
+		capture->logical_geometry.width = width;
+		capture->logical_geometry.height = height;
+	}
 }
 
 static void ext_image_copy_capture_session_handle_shm_format(void *data,
@@ -181,6 +188,64 @@ static const struct ext_image_copy_capture_session_v1_listener ext_image_copy_ca
 	.dmabuf_format = ext_image_copy_capture_session_handle_dmabuf_format,
 	.done = ext_image_copy_capture_session_handle_done,
 	.stopped = ext_image_copy_capture_session_handle_stopped,
+};
+
+
+static void foreign_toplevel_handle_closed(void *data,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle) {
+	// No-op
+}
+
+static void foreign_toplevel_handle_done(void *data,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle) {
+	// TODO: wait for the done event
+}
+
+static void foreign_toplevel_handle_title(void *data,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle, const char *title) {
+	// No-op
+}
+
+static void foreign_toplevel_handle_app_id(void *data,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle, const char *app_id) {
+	// No-op
+}
+
+static void foreign_toplevel_handle_identifier(void *data,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle, const char *identifier) {
+	struct grim_toplevel *toplevel = data;
+	toplevel->identifier = strdup(identifier);
+}
+
+static const struct ext_foreign_toplevel_handle_v1_listener foreign_toplevel_listener = {
+	.closed = foreign_toplevel_handle_closed,
+	.done = foreign_toplevel_handle_done,
+	.title = foreign_toplevel_handle_title,
+	.app_id = foreign_toplevel_handle_app_id,
+	.identifier = foreign_toplevel_handle_identifier,
+};
+
+static void foreign_toplevel_list_handle_toplevel(void *data,
+		struct ext_foreign_toplevel_list_v1 *list,
+		struct ext_foreign_toplevel_handle_v1 *toplevel_handle) {
+	struct grim_state *state = data;
+
+	struct grim_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+	wl_list_insert(&state->toplevels, &toplevel->link);
+
+	toplevel->handle = toplevel_handle;
+
+	ext_foreign_toplevel_handle_v1_add_listener(toplevel_handle, &foreign_toplevel_listener, toplevel);
+}
+
+static void foreign_toplevel_list_handle_finished(void *data,
+		struct ext_foreign_toplevel_list_v1 *list) {
+	// No-op
+}
+
+static const struct ext_foreign_toplevel_list_v1_listener foreign_toplevel_list_listener = {
+	.toplevel = foreign_toplevel_list_handle_toplevel,
+	.finished = foreign_toplevel_list_handle_finished,
 };
 
 
@@ -308,12 +373,20 @@ static void handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, ext_output_image_capture_source_manager_v1_interface.name) == 0) {
 		state->ext_output_image_capture_source_manager = wl_registry_bind(registry, name,
 			&ext_output_image_capture_source_manager_v1_interface, 1);
+	} else if (strcmp(interface, ext_foreign_toplevel_image_capture_source_manager_v1_interface.name) == 0) {
+		state->ext_foreign_toplevel_image_capture_source_manager = wl_registry_bind(registry, name,
+			&ext_foreign_toplevel_image_capture_source_manager_v1_interface, 1);
 	} else if (strcmp(interface, ext_image_copy_capture_manager_v1_interface.name) == 0) {
 		state->ext_image_copy_capture_manager = wl_registry_bind(registry, name,
 			&ext_image_copy_capture_manager_v1_interface, 1);
 	} else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
 		state->screencopy_manager = wl_registry_bind(registry, name,
 			&zwlr_screencopy_manager_v1_interface, 1);
+	} else if (strcmp(interface, ext_foreign_toplevel_list_v1_interface.name) == 0) {
+		state->foreign_toplevel_list = wl_registry_bind(registry, name,
+			&ext_foreign_toplevel_list_v1_interface, 1);
+		ext_foreign_toplevel_list_v1_add_listener(state->foreign_toplevel_list,
+			&foreign_toplevel_list_listener, state);
 	}
 }
 
@@ -449,6 +522,52 @@ char *get_output_dir(void) {
 	return strdup(".");
 }
 
+static void create_output_capture(struct grim_state *state, struct grim_output *output, bool with_cursor) {
+	struct grim_capture *capture = calloc(1, sizeof(*capture));
+	capture->state = state;
+	capture->output = output;
+	capture->transform = output->transform;
+	capture->logical_geometry = output->logical_geometry;
+	wl_list_insert(&state->captures, &capture->link);
+
+	if (state->ext_output_image_capture_source_manager != NULL) {
+		uint32_t options = 0;
+		if (with_cursor) {
+			options |= EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS;
+		}
+		struct ext_image_capture_source_v1 *source = ext_output_image_capture_source_manager_v1_create_source(
+			state->ext_output_image_capture_source_manager, output->wl_output);
+		capture->ext_image_copy_capture_session = ext_image_copy_capture_manager_v1_create_session(
+			state->ext_image_copy_capture_manager, source, options);
+		ext_image_copy_capture_session_v1_add_listener(capture->ext_image_copy_capture_session,
+			&ext_image_copy_capture_session_listener, capture);
+		ext_image_capture_source_v1_destroy(source);
+	} else {
+		capture->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
+			state->screencopy_manager, with_cursor, output->wl_output);
+		zwlr_screencopy_frame_v1_add_listener(capture->screencopy_frame,
+			&screencopy_frame_listener, capture);
+	}
+}
+
+static void create_toplevel_capture(struct grim_state *state, struct grim_toplevel *toplevel, bool with_cursor) {
+	struct grim_capture *capture = calloc(1, sizeof(*capture));
+	capture->state = state;
+	wl_list_insert(&state->captures, &capture->link);
+
+	uint32_t options = 0;
+	if (with_cursor) {
+		options |= EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS;
+	}
+	struct ext_image_capture_source_v1 *source = ext_foreign_toplevel_image_capture_source_manager_v1_create_source(
+		state->ext_foreign_toplevel_image_capture_source_manager, toplevel->handle);
+	struct ext_image_copy_capture_session_v1 *session = ext_image_copy_capture_manager_v1_create_session(
+		state->ext_image_copy_capture_manager, source, options);
+	ext_image_copy_capture_session_v1_add_listener(session,
+		&ext_image_copy_capture_session_listener, capture);
+	ext_image_capture_source_v1_destroy(source);
+}
+
 static const char usage[] =
 	"Usage: grim [options...] [output-file]\n"
 	"\n"
@@ -460,6 +579,7 @@ static const char usage[] =
 	"  -q <quality>    Set the JPEG filetype quality 0-100. Defaults to 80.\n"
 	"  -l <level>      Set the PNG filetype compression level 0-9. Defaults to 6.\n"
 	"  -o <output>     Set the output name to capture.\n"
+	"  -T <identifier> Set the identifier of a foreign toplevel handle to capture.\n"
 	"  -c              Include cursors in the screenshot.\n";
 
 int main(int argc, char *argv[]) {
@@ -471,8 +591,9 @@ int main(int argc, char *argv[]) {
 	int jpeg_quality = 80;
 	int png_level = 6; // current default png/zlib compression level
 	bool with_cursor = false;
+	const char *toplevel_identifier = NULL;
 	int opt;
-	while ((opt = getopt(argc, argv, "hs:g:t:q:l:o:c")) != -1) {
+	while ((opt = getopt(argc, argv, "hs:g:t:q:l:o:cT:")) != -1) {
 		switch (opt) {
 		case 'h':
 			printf("%s", usage);
@@ -567,6 +688,9 @@ int main(int argc, char *argv[]) {
 		case 'c':
 			with_cursor = true;
 			break;
+		case 'T':
+			toplevel_identifier = optarg;
+			break;
 		default:
 			return EXIT_FAILURE;
 		}
@@ -574,6 +698,10 @@ int main(int argc, char *argv[]) {
 
 	if (geometry_output != NULL && geometry != NULL) {
 		fprintf(stderr, "-o and -g are mutually exclusive\n");
+		return EXIT_FAILURE;
+	}
+	if (geometry_output != NULL && toplevel_identifier != NULL) {
+		fprintf(stderr, "-o and -T are mutually exclusive\n");
 		return EXIT_FAILURE;
 	}
 
@@ -606,6 +734,7 @@ int main(int argc, char *argv[]) {
 
 	struct grim_state state = {0};
 	wl_list_init(&state.outputs);
+	wl_list_init(&state.toplevels);
 	wl_list_init(&state.captures);
 
 	state.display = wl_display_connect(NULL);
@@ -625,12 +754,18 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "compositor doesn't support wl_shm\n");
 		return EXIT_FAILURE;
 	}
-	if ((state.ext_output_image_capture_source_manager == NULL || state.ext_image_copy_capture_manager == NULL) &&
-			state.screencopy_manager == NULL) {
-		fprintf(stderr, "compositor doesn't support the screencopy protocol\n");
+	bool can_capture;
+	if (toplevel_identifier != NULL) {
+		can_capture = state.ext_foreign_toplevel_image_capture_source_manager != NULL && state.ext_image_copy_capture_manager;
+	} else {
+		can_capture = state.screencopy_manager != NULL ||
+			(state.ext_output_image_capture_source_manager != NULL && state.ext_image_copy_capture_manager != NULL);;
+	}
+	if (!can_capture) {
+		fprintf(stderr, "compositor doesn't support the screen capture protocol\n");
 		return EXIT_FAILURE;
 	}
-	if (wl_list_empty(&state.outputs)) {
+	if (toplevel_identifier == NULL && wl_list_empty(&state.outputs)) {
 		fprintf(stderr, "no wl_output\n");
 		return EXIT_FAILURE;
 	}
@@ -643,11 +778,6 @@ int main(int argc, char *argv[]) {
 			zxdg_output_v1_add_listener(output->xdg_output,
 				&xdg_output_listener, output);
 		}
-
-		if (wl_display_roundtrip(state.display) < 0) {
-			fprintf(stderr, "wl_display_roundtrip() failed\n");
-			return EXIT_FAILURE;
-		}
 	} else {
 		fprintf(stderr, "warning: zxdg_output_manager_v1 isn't available, "
 			"guessing the output layout\n");
@@ -655,6 +785,13 @@ int main(int argc, char *argv[]) {
 		struct grim_output *output;
 		wl_list_for_each(output, &state.outputs, link) {
 			guess_output_logical_geometry(output);
+		}
+	}
+
+	if (state.xdg_output_manager != NULL || toplevel_identifier != NULL) {
+		if (wl_display_roundtrip(state.display) < 0) {
+			fprintf(stderr, "wl_display_roundtrip() failed\n");
+			return EXIT_FAILURE;
 		}
 	}
 
@@ -674,57 +811,48 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	size_t n_pending = 0;
-	struct grim_output *output;
-	wl_list_for_each(output, &state.outputs, link) {
-		if (geometry != NULL &&
-				!intersect_box(geometry, &output->logical_geometry)) {
-			continue;
-		}
-		if (use_greatest_scale && output->logical_scale > scale) {
-			scale = output->logical_scale;
-		}
-
-		struct grim_capture *capture = calloc(1, sizeof(*capture));
-		capture->state = &state;
-		capture->output = output;
-		capture->transform = output->transform;
-		capture->logical_geometry = output->logical_geometry;
-		wl_list_insert(&state.captures, &capture->link);
-
-		if (state.ext_output_image_capture_source_manager != NULL) {
-			uint32_t options = 0;
-			if (with_cursor) {
-				options |= EXT_IMAGE_COPY_CAPTURE_MANAGER_V1_OPTIONS_PAINT_CURSORS;
+	if (toplevel_identifier != NULL) {
+		bool found = false;
+		struct grim_toplevel *toplevel;
+		wl_list_for_each(toplevel, &state.toplevels, link) {
+			if (strcmp(toplevel->identifier, toplevel_identifier) == 0) {
+				found = true;
+				break;
 			}
-			struct ext_image_capture_source_v1 *source = ext_output_image_capture_source_manager_v1_create_source(
-				state.ext_output_image_capture_source_manager, output->wl_output);
-			capture->ext_image_copy_capture_session = ext_image_copy_capture_manager_v1_create_session(
-				state.ext_image_copy_capture_manager, source, options);
-			ext_image_copy_capture_session_v1_add_listener(capture->ext_image_copy_capture_session,
-				&ext_image_copy_capture_session_listener, capture);
-			ext_image_capture_source_v1_destroy(source);
-		} else {
-			capture->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
-				state.screencopy_manager, with_cursor, output->wl_output);
-			zwlr_screencopy_frame_v1_add_listener(capture->screencopy_frame,
-				&screencopy_frame_listener, capture);
+		}
+		if (!found) {
+			fprintf(stderr, "cannot find toplevel\n");
+			return EXIT_FAILURE;
 		}
 
-		++n_pending;
+		create_toplevel_capture(&state, toplevel, with_cursor);
+	} else {
+		struct grim_output *output;
+		wl_list_for_each(output, &state.outputs, link) {
+			if (geometry != NULL &&
+					!intersect_box(geometry, &output->logical_geometry)) {
+				continue;
+			}
+			if (use_greatest_scale && output->logical_scale > scale) {
+				scale = output->logical_scale;
+			}
+
+			create_output_capture(&state, output, with_cursor);
+		}
+
+		if (wl_list_empty(&state.captures)) {
+			fprintf(stderr, "supplied geometry did not intersect with any outputs\n");
+			return EXIT_FAILURE;
+		}
 	}
 
-	if (n_pending == 0) {
-		fprintf(stderr, "supplied geometry did not intersect with any outputs\n");
-		return EXIT_FAILURE;
-	}
-
+	size_t n_pending = wl_list_length(&state.captures);
 	bool done = false;
 	while (!done && wl_display_dispatch(state.display) != -1) {
 		done = (state.n_done == n_pending);
 	}
 	if (!done) {
-		fprintf(stderr, "failed to screenshoot all outputs\n");
+		fprintf(stderr, "failed to screenshoot all sources\n");
 		return EXIT_FAILURE;
 	}
 
@@ -793,7 +921,7 @@ int main(int argc, char *argv[]) {
 		destroy_buffer(capture->buffer);
 		free(capture);
 	}
-	struct grim_output *output_tmp;
+	struct grim_output *output, *output_tmp;
 	wl_list_for_each_safe(output, output_tmp, &state.outputs, link) {
 		wl_list_remove(&output->link);
 		free(output->name);
@@ -803,8 +931,21 @@ int main(int argc, char *argv[]) {
 		wl_output_release(output->wl_output);
 		free(output);
 	}
+	struct grim_toplevel *toplevel, *toplevel_tmp;
+	wl_list_for_each_safe(toplevel, toplevel_tmp, &state.toplevels, link) {
+		wl_list_remove(&toplevel->link);
+		free(toplevel->identifier);
+		ext_foreign_toplevel_handle_v1_destroy(toplevel->handle);
+		free(toplevel);
+	}
+	if (state.foreign_toplevel_list != NULL) {
+		ext_foreign_toplevel_list_v1_destroy(state.foreign_toplevel_list);
+	}
 	if (state.ext_output_image_capture_source_manager != NULL) {
 		ext_output_image_capture_source_manager_v1_destroy(state.ext_output_image_capture_source_manager);
+	}
+	if (state.ext_foreign_toplevel_image_capture_source_manager != NULL) {
+		ext_foreign_toplevel_image_capture_source_manager_v1_destroy(state.ext_foreign_toplevel_image_capture_source_manager);
 	}
 	if (state.ext_image_copy_capture_manager != NULL) {
 		ext_image_copy_capture_manager_v1_destroy(state.ext_image_copy_capture_manager);

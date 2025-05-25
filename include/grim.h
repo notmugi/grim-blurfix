@@ -17,9 +17,13 @@ struct grim_state {
 	struct wl_shm *shm;
 	struct zxdg_output_manager_v1 *xdg_output_manager;
 	struct ext_output_image_capture_source_manager_v1 *ext_output_image_capture_source_manager;
+	struct ext_foreign_toplevel_image_capture_source_manager_v1 *ext_foreign_toplevel_image_capture_source_manager;
 	struct ext_image_copy_capture_manager_v1 *ext_image_copy_capture_manager;
 	struct zwlr_screencopy_manager_v1 *screencopy_manager;
+	struct ext_foreign_toplevel_list_v1 *foreign_toplevel_list;
+
 	struct wl_list outputs;
+	struct wl_list toplevels;
 
 	struct wl_list captures;
 	size_t n_done;
@@ -60,6 +64,13 @@ struct grim_capture {
 
 	struct zwlr_screencopy_frame_v1 *screencopy_frame;
 	uint32_t screencopy_frame_flags; // enum zwlr_screencopy_frame_v1_flags
+};
+
+struct grim_toplevel {
+	struct ext_foreign_toplevel_handle_v1 *handle;
+	struct wl_list link;
+
+	char *identifier;
 };
 
 #endif
