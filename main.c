@@ -466,7 +466,7 @@ int main(int argc, char *argv[]) {
 	double scale = 1.0;
 	bool use_greatest_scale = true;
 	struct grim_box *geometry = NULL;
-	char *geometry_output = NULL;
+	const char *geometry_output = NULL;
 	enum grim_filetype output_filetype = GRIM_FILETYPE_PNG;
 	int jpeg_quality = 80;
 	int png_level = 6; // current default png/zlib compression level
@@ -562,8 +562,7 @@ int main(int argc, char *argv[]) {
 			}
 			break;
 		case 'o':
-			free(geometry_output);
-			geometry_output = strdup(optarg);
+			geometry_output = optarg;
 			break;
 		case 'c':
 			with_cursor = true;
@@ -656,8 +655,7 @@ int main(int argc, char *argv[]) {
 	if (geometry_output != NULL) {
 		struct grim_output *output;
 		wl_list_for_each(output, &state.outputs, link) {
-			if (output->name != NULL &&
-					strcmp(output->name, geometry_output) == 0) {
+			if (output->name != NULL && strcmp(output->name, geometry_output) == 0) {
 				geometry = calloc(1, sizeof(struct grim_box));
 				memcpy(geometry, &output->logical_geometry,
 					sizeof(struct grim_box));
@@ -803,6 +801,5 @@ int main(int argc, char *argv[]) {
 	wl_registry_destroy(state.registry);
 	wl_display_disconnect(state.display);
 	free(geometry);
-	free(geometry_output);
 	return EXIT_SUCCESS;
 }
