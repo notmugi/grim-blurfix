@@ -21,6 +21,7 @@ struct grim_state {
 	struct zwlr_screencopy_manager_v1 *screencopy_manager;
 	struct wl_list outputs;
 
+	struct wl_list captures;
 	size_t n_done;
 };
 
@@ -39,6 +40,15 @@ struct grim_output {
 	struct grim_box logical_geometry;
 	double logical_scale; // guessed from the logical size
 	char *name;
+};
+
+struct grim_capture {
+	struct grim_state *state;
+	struct grim_output *output;
+	struct wl_list link;
+
+	enum wl_output_transform transform;
+	struct grim_box logical_geometry;
 
 	struct grim_buffer *buffer;
 

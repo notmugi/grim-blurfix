@@ -28,35 +28,35 @@
 static void screencopy_frame_handle_buffer(void *data,
 		struct zwlr_screencopy_frame_v1 *frame, uint32_t format, uint32_t width,
 		uint32_t height, uint32_t stride) {
-	struct grim_output *output = data;
+	struct grim_capture *capture = data;
 
-	output->buffer =
-		create_buffer(output->state->shm, format, width, height, stride);
-	if (output->buffer == NULL) {
+	capture->buffer =
+		create_buffer(capture->state->shm, format, width, height, stride);
+	if (capture->buffer == NULL) {
 		fprintf(stderr, "failed to create buffer\n");
 		exit(EXIT_FAILURE);
 	}
 
-	zwlr_screencopy_frame_v1_copy(frame, output->buffer->wl_buffer);
+	zwlr_screencopy_frame_v1_copy(frame, capture->buffer->wl_buffer);
 }
 
 static void screencopy_frame_handle_flags(void *data,
 		struct zwlr_screencopy_frame_v1 *frame, uint32_t flags) {
-	struct grim_output *output = data;
-	output->screencopy_frame_flags = flags;
+	struct grim_capture *capture = data;
+	capture->screencopy_frame_flags = flags;
 }
 
 static void screencopy_frame_handle_ready(void *data,
 		struct zwlr_screencopy_frame_v1 *frame, uint32_t tv_sec_hi,
 		uint32_t tv_sec_lo, uint32_t tv_nsec) {
-	struct grim_output *output = data;
-	++output->state->n_done;
+	struct grim_capture *capture = data;
+	++capture->state->n_done;
 }
 
 static void screencopy_frame_handle_failed(void *data,
 		struct zwlr_screencopy_frame_v1 *frame) {
-	struct grim_output *output = data;
-	fprintf(stderr, "failed to copy output %s\n", output->name);
+	struct grim_capture *capture = data;
+	fprintf(stderr, "failed to copy output %s\n", capture->output->name);
 	exit(EXIT_FAILURE);
 }
 
@@ -70,8 +70,8 @@ static const struct zwlr_screencopy_frame_v1_listener screencopy_frame_listener 
 
 static void ext_image_copy_capture_frame_handle_transform(void *data,
 		struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform) {
-	struct grim_output *output = data;
-	output->transform = transform;
+	struct grim_capture *capture = data;
+	capture->transform = transform;
 }
 
 static void ext_image_copy_capture_frame_handle_damage(void *data,
@@ -88,15 +88,15 @@ static void ext_image_copy_capture_frame_handle_presentation_time(void *data,
 
 static void ext_image_copy_capture_frame_handle_ready(void *data,
 		struct ext_image_copy_capture_frame_v1 *frame) {
-	struct grim_output *output = data;
-	++output->state->n_done;
+	struct grim_capture *capture = data;
+	++capture->state->n_done;
 }
 
 static void ext_image_copy_capture_frame_handle_failed(void *data,
 		struct ext_image_copy_capture_frame_v1 *frame, uint32_t reason) {
 	// TODO: retry depending on reason
-	struct grim_output *output = data;
-	fprintf(stderr, "failed to copy output %s\n", output->name);
+	struct grim_capture *capture = data;
+	fprintf(stderr, "failed to copy output %s\n", capture->output->name);
 	exit(EXIT_FAILURE);
 }
 
@@ -110,21 +110,21 @@ static const struct ext_image_copy_capture_frame_v1_listener ext_image_copy_capt
 
 static void ext_image_copy_capture_session_handle_buffer_size(void *data,
 		struct ext_image_copy_capture_session_v1 *session, uint32_t width, uint32_t height) {
-	struct grim_output *output = data;
-	output->buffer_width = width;
-	output->buffer_height = height;
+	struct grim_capture *capture = data;
+	capture->buffer_width = width;
+	capture->buffer_height = height;
 }
 
 static void ext_image_copy_capture_session_handle_shm_format(void *data,
 		struct ext_image_copy_capture_session_v1 *session, uint32_t format) {
-	struct grim_output *output = data;
+	struct grim_capture *capture = data;
 
-	if (output->has_shm_format || !is_format_supported(format)) {
+	if (capture->has_shm_format || !is_format_supported(format)) {
 		return;
 	}
 
-	output->shm_format = format;
-	output->has_shm_format = true;
+	capture->shm_format = format;
+	capture->has_shm_format = true;
 }
 
 static void ext_image_copy_capture_session_handle_dmabuf_device(void *data,
@@ -140,33 +140,33 @@ static void ext_image_copy_capture_session_handle_dmabuf_format(void *data,
 
 static void ext_image_copy_capture_session_handle_done(void *data,
 		struct ext_image_copy_capture_session_v1 *session) {
-	struct grim_output *output = data;
+	struct grim_capture *capture = data;
 
-	if (output->ext_image_copy_capture_frame != NULL) {
+	if (capture->ext_image_copy_capture_frame != NULL) {
 		return;
 	}
 
-	if (!output->has_shm_format) {
+	if (!capture->has_shm_format) {
 		fprintf(stderr, "no supported format found\n");
 		exit(EXIT_FAILURE);
 	}
 
-	int32_t stride = get_format_min_stride(output->shm_format, output->buffer_width);
-	output->buffer =
-		create_buffer(output->state->shm, output->shm_format, output->buffer_width, output->buffer_height, stride);
-	if (output->buffer == NULL) {
+	int32_t stride = get_format_min_stride(capture->shm_format, capture->buffer_width);
+	capture->buffer =
+		create_buffer(capture->state->shm, capture->shm_format, capture->buffer_width, capture->buffer_height, stride);
+	if (capture->buffer == NULL) {
 		fprintf(stderr, "failed to create buffer\n");
 		exit(EXIT_FAILURE);
 	}
 
-	output->ext_image_copy_capture_frame = ext_image_copy_capture_session_v1_create_frame(session);
-	ext_image_copy_capture_frame_v1_add_listener(output->ext_image_copy_capture_frame,
-		&ext_image_copy_capture_frame_listener, output);
+	capture->ext_image_copy_capture_frame = ext_image_copy_capture_session_v1_create_frame(session);
+	ext_image_copy_capture_frame_v1_add_listener(capture->ext_image_copy_capture_frame,
+		&ext_image_copy_capture_frame_listener, capture);
 
-	ext_image_copy_capture_frame_v1_attach_buffer(output->ext_image_copy_capture_frame, output->buffer->wl_buffer);
-	ext_image_copy_capture_frame_v1_damage_buffer(output->ext_image_copy_capture_frame,
+	ext_image_copy_capture_frame_v1_attach_buffer(capture->ext_image_copy_capture_frame, capture->buffer->wl_buffer);
+	ext_image_copy_capture_frame_v1_damage_buffer(capture->ext_image_copy_capture_frame,
 		0, 0, INT32_MAX, INT32_MAX);
-	ext_image_copy_capture_frame_v1_capture(output->ext_image_copy_capture_frame);
+	ext_image_copy_capture_frame_v1_capture(capture->ext_image_copy_capture_frame);
 }
 
 static void ext_image_copy_capture_session_handle_stopped(void *data,
@@ -606,6 +606,7 @@ int main(int argc, char *argv[]) {
 
 	struct grim_state state = {0};
 	wl_list_init(&state.outputs);
+	wl_list_init(&state.captures);
 
 	state.display = wl_display_connect(NULL);
 	if (state.display == NULL) {
@@ -684,6 +685,13 @@ int main(int argc, char *argv[]) {
 			scale = output->logical_scale;
 		}
 
+		struct grim_capture *capture = calloc(1, sizeof(*capture));
+		capture->state = &state;
+		capture->output = output;
+		capture->transform = output->transform;
+		capture->logical_geometry = output->logical_geometry;
+		wl_list_insert(&state.captures, &capture->link);
+
 		if (state.ext_output_image_capture_source_manager != NULL) {
 			uint32_t options = 0;
 			if (with_cursor) {
@@ -691,16 +699,16 @@ int main(int argc, char *argv[]) {
 			}
 			struct ext_image_capture_source_v1 *source = ext_output_image_capture_source_manager_v1_create_source(
 				state.ext_output_image_capture_source_manager, output->wl_output);
-			output->ext_image_copy_capture_session = ext_image_copy_capture_manager_v1_create_session(
+			capture->ext_image_copy_capture_session = ext_image_copy_capture_manager_v1_create_session(
 				state.ext_image_copy_capture_manager, source, options);
-			ext_image_copy_capture_session_v1_add_listener(output->ext_image_copy_capture_session,
-				&ext_image_copy_capture_session_listener, output);
+			ext_image_copy_capture_session_v1_add_listener(capture->ext_image_copy_capture_session,
+				&ext_image_copy_capture_session_listener, capture);
 			ext_image_capture_source_v1_destroy(source);
 		} else {
-			output->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
+			capture->screencopy_frame = zwlr_screencopy_manager_v1_capture_output(
 				state.screencopy_manager, with_cursor, output->wl_output);
-			zwlr_screencopy_frame_v1_add_listener(output->screencopy_frame,
-				&screencopy_frame_listener, output);
+			zwlr_screencopy_frame_v1_add_listener(capture->screencopy_frame,
+				&screencopy_frame_listener, capture);
 		}
 
 		++n_pending;
@@ -722,7 +730,7 @@ int main(int argc, char *argv[]) {
 
 	if (geometry == NULL) {
 		geometry = calloc(1, sizeof(struct grim_box));
-		get_output_layout_extents(&state, geometry);
+		get_capture_layout_extents(&state, geometry);
 	}
 
 	pixman_image_t *image = render(&state, geometry, scale);
@@ -770,20 +778,25 @@ int main(int argc, char *argv[]) {
 	free(output_filepath);
 	pixman_image_unref(image);
 
+	struct grim_capture *capture, *capture_tmp;
+	wl_list_for_each_safe(capture, capture_tmp, &state.captures, link) {
+		wl_list_remove(&capture->link);
+		if (capture->ext_image_copy_capture_frame != NULL) {
+			ext_image_copy_capture_frame_v1_destroy(capture->ext_image_copy_capture_frame);
+		}
+		if (capture->ext_image_copy_capture_session != NULL) {
+			ext_image_copy_capture_session_v1_destroy(capture->ext_image_copy_capture_session);
+		}
+		if (capture->screencopy_frame != NULL) {
+			zwlr_screencopy_frame_v1_destroy(capture->screencopy_frame);
+		}
+		destroy_buffer(capture->buffer);
+		free(capture);
+	}
 	struct grim_output *output_tmp;
 	wl_list_for_each_safe(output, output_tmp, &state.outputs, link) {
 		wl_list_remove(&output->link);
 		free(output->name);
-		if (output->ext_image_copy_capture_frame != NULL) {
-			ext_image_copy_capture_frame_v1_destroy(output->ext_image_copy_capture_frame);
-		}
-		if (output->ext_image_copy_capture_session != NULL) {
-			ext_image_copy_capture_session_v1_destroy(output->ext_image_copy_capture_session);
-		}
-		if (output->screencopy_frame != NULL) {
-			zwlr_screencopy_frame_v1_destroy(output->screencopy_frame);
-		}
-		destroy_buffer(output->buffer);
 		if (output->xdg_output != NULL) {
 			zxdg_output_v1_destroy(output->xdg_output);
 		}

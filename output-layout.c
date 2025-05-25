@@ -8,23 +8,23 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-void get_output_layout_extents(struct grim_state *state, struct grim_box *box) {
+void get_capture_layout_extents(struct grim_state *state, struct grim_box *box) {
 	int32_t x1 = INT_MAX, y1 = INT_MAX;
 	int32_t x2 = INT_MIN, y2 = INT_MIN;
 
-	struct grim_output *output;
-	wl_list_for_each(output, &state->outputs, link) {
-		if (output->logical_geometry.x < x1) {
-			x1 = output->logical_geometry.x;
+	struct grim_capture *capture;
+	wl_list_for_each(capture, &state->captures, link) {
+		if (capture->logical_geometry.x < x1) {
+			x1 = capture->logical_geometry.x;
 		}
-		if (output->logical_geometry.y < y1) {
-			y1 = output->logical_geometry.y;
+		if (capture->logical_geometry.y < y1) {
+			y1 = capture->logical_geometry.y;
 		}
-		if (output->logical_geometry.x + output->logical_geometry.width > x2) {
-			x2 = output->logical_geometry.x + output->logical_geometry.width;
+		if (capture->logical_geometry.x + capture->logical_geometry.width > x2) {
+			x2 = capture->logical_geometry.x + capture->logical_geometry.width;
 		}
-		if (output->logical_geometry.y + output->logical_geometry.height > y2) {
-			y2 = output->logical_geometry.y + output->logical_geometry.height;
+		if (capture->logical_geometry.y + capture->logical_geometry.height > y2) {
+			y2 = capture->logical_geometry.y + capture->logical_geometry.height;
 		}
 	}
 

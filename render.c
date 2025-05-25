@@ -152,9 +152,9 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 		return NULL;
 	}
 
-	struct grim_output *output;
-	wl_list_for_each(output, &state->outputs, link) {
-		struct grim_buffer *buffer = output->buffer;
+	struct grim_capture *capture;
+	wl_list_for_each(capture, &state->captures, link) {
+		struct grim_buffer *buffer = capture->buffer;
 		if (buffer == NULL) {
 			continue;
 		}
@@ -166,17 +166,17 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 			return NULL;
 		}
 
-		int32_t output_x = output->logical_geometry.x - geometry->x;
-		int32_t output_y = output->logical_geometry.y - geometry->y;
-		int32_t output_width = output->logical_geometry.width;
-		int32_t output_height = output->logical_geometry.height;
+		int32_t output_x = capture->logical_geometry.x - geometry->x;
+		int32_t output_y = capture->logical_geometry.y - geometry->y;
+		int32_t output_width = capture->logical_geometry.width;
+		int32_t output_height = capture->logical_geometry.height;
 
 		int32_t raw_output_width = buffer->width;
 		int32_t raw_output_height = buffer->height;
-		apply_output_transform(output->transform, &raw_output_width, &raw_output_height);
+		apply_output_transform(capture->transform, &raw_output_width, &raw_output_height);
 
-		int output_flipped_x = get_output_flipped(output->transform);
-		int output_flipped_y = output->screencopy_frame_flags &
+		int output_flipped_x = get_output_flipped(capture->transform);
+		int output_flipped_y = capture->screencopy_frame_flags &
 			ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT ? -1 : 1;
 
 		pixman_image_t *output_image = pixman_image_create_bits(
@@ -198,8 +198,8 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 			(double)output_width / raw_output_width,
 			(double)output_height * output_flipped_y / raw_output_height);
 		pixman_f_transform_rotate(&out2com, NULL,
-			round(cos(get_output_rotation(output->transform))),
-			round(sin(get_output_rotation(output->transform))));
+			round(cos(get_output_rotation(capture->transform))),
+			round(sin(get_output_rotation(capture->transform))));
 		pixman_f_transform_scale(&out2com, NULL, output_flipped_x, 1);
 		pixman_f_transform_translate(&out2com, NULL,
 			(double)output_width / 2,
@@ -246,10 +246,10 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 		}
 
 		bool overlapping = false;
-		struct grim_output *other_output;
-		wl_list_for_each(other_output, &state->outputs, link) {
-			if (output != other_output && intersect_box(&output->logical_geometry,
-					&other_output->logical_geometry)) {
+		struct grim_capture *other_capture;
+		wl_list_for_each(other_capture, &state->captures, link) {
+			if (capture != other_capture && intersect_box(&capture->logical_geometry,
+					&other_capture->logical_geometry)) {
 				overlapping = true;
 			}
 		}
