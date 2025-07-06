@@ -270,8 +270,8 @@ static void xdg_output_handle_done(void *data,
 	struct grim_output *output = data;
 
 	// Guess the output scale from the logical size
-	int32_t width = output->geometry.width;
-	int32_t height = output->geometry.height;
+	int32_t width = output->mode_width;
+	int32_t height = output->mode_height;
 	apply_output_transform(output->transform, &width, &height);
 	output->logical_scale = (double)width / output->logical_geometry.width;
 }
@@ -305,8 +305,8 @@ static void output_handle_geometry(void *data, struct wl_output *wl_output,
 		int32_t transform) {
 	struct grim_output *output = data;
 
-	output->geometry.x = x;
-	output->geometry.y = y;
+	output->fallback_x = x;
+	output->fallback_y = y;
 	output->transform = transform;
 }
 
@@ -315,8 +315,8 @@ static void output_handle_mode(void *data, struct wl_output *wl_output,
 	struct grim_output *output = data;
 
 	if ((flags & WL_OUTPUT_MODE_CURRENT) != 0) {
-		output->geometry.width = width;
-		output->geometry.height = height;
+		output->mode_width = width;
+		output->mode_height = height;
 	}
 }
 

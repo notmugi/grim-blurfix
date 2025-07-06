@@ -37,7 +37,8 @@ struct grim_output {
 	struct zxdg_output_v1 *xdg_output;
 	struct wl_list link;
 
-	struct grim_box geometry; // legacy position from wl_output.geometry and current mode size
+	int32_t fallback_x, fallback_y; // legacy position from wl_output.geometry
+	uint32_t mode_width, mode_height; // current mode size
 	enum wl_output_transform transform;
 	int32_t scale;
 

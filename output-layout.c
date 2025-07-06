@@ -60,10 +60,10 @@ int get_output_flipped(enum wl_output_transform transform) {
 }
 
 void guess_output_logical_geometry(struct grim_output *output) {
-	output->logical_geometry.x = output->geometry.x;
-	output->logical_geometry.y = output->geometry.y;
-	output->logical_geometry.width = output->geometry.width / output->scale;
-	output->logical_geometry.height = output->geometry.height / output->scale;
+	output->logical_geometry.x = output->fallback_x;
+	output->logical_geometry.y = output->fallback_y;
+	output->logical_geometry.width = output->mode_width / output->scale;
+	output->logical_geometry.height = output->mode_height / output->scale;
 	apply_output_transform(output->transform,
 		&output->logical_geometry.width,
 		&output->logical_geometry.height);
