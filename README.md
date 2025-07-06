@@ -44,7 +44,7 @@ Grab a screenshot from the focused monitor under Sway, using `swaymsg` and
 `jq`:
 
 ```sh
-grim -o $(swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name')
+grim -o "$(swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name')"
 ```
 
 Grab a screenshot from the focused window under Sway, using `swaymsg` and
