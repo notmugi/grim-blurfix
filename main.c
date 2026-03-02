@@ -778,20 +778,20 @@ int main(int argc, char *argv[]) {
 			zxdg_output_v1_add_listener(output->xdg_output,
 				&xdg_output_listener, output);
 		}
-	} else {
+	}
+
+	if (wl_display_roundtrip(state.display) < 0) {
+		fprintf(stderr, "wl_display_roundtrip() failed\n");
+		return EXIT_FAILURE;
+	}
+
+	if (state.xdg_output_manager == NULL) {
 		fprintf(stderr, "warning: zxdg_output_manager_v1 isn't available, "
 			"guessing the output layout\n");
 
 		struct grim_output *output;
 		wl_list_for_each(output, &state.outputs, link) {
 			guess_output_logical_geometry(output);
-		}
-	}
-
-	if (state.xdg_output_manager != NULL || toplevel_identifier != NULL) {
-		if (wl_display_roundtrip(state.display) < 0) {
-			fprintf(stderr, "wl_display_roundtrip() failed\n");
-			return EXIT_FAILURE;
 		}
 	}
 
