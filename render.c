@@ -166,9 +166,6 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
 			return NULL;
 		}
 
-		int32_t output_width = capture->logical_geometry.width;
-		int32_t output_height = capture->logical_geometry.height;
-
 		int32_t raw_output_x = (capture->logical_geometry.x - geometry->x) * scale;
 		int32_t raw_output_y = (capture->logical_geometry.y - geometry->y) * scale;
 		int32_t raw_output_width = buffer->width;
