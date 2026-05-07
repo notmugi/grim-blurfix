@@ -1,0 +1,72 @@
+From 0ccaab91ea90adb72397df8cb0574aca4d525b9b Mon Sep 17 00:00:00 2001
+From: YOSHIOKA Takuma <nop_thread@nops.red>
+Date: Sun, 26 Apr 2026 19:26:05 +0900
+Subject: [PATCH] render: make transformations in geometry space
+
+Ported <https://lists.sr.ht/~emersion/grim-dev/patches/56912> onto
+v1.5.0. The below is the commit message of the original patch.
+
+--------
+
+Previously, the rendering process made transformations in logical
+geometry space. When using fractional scaling, this process scaled
+the transformations to the logical geometry space and back using the
+fractional scale, which led to floating point rounding errors. This,
+produced non pixel perfect / slightly blurry images.
+
+This patch fixes the above issue, by making the transformations in
+geometry (pixel) space, avoiding the unnecessary scaling roundtrip which
+caused the rounding errors.
+
+Signed-off-by: Loukas Agorgianitis <loukas@agorgianitis.com>
+
+--------
+
+Co-authored-by: Loukas Agorgianitis <loukas@agorgianitis.com>
+---
+ render.c | 15 ++++++---------
+ 1 file changed, 6 insertions(+), 9 deletions(-)
+
+diff --git a/render.c b/render.c
+index 1f8f9292a3ff..7f9093f7748f 100644
+--- a/render.c
++++ b/render.c
+@@ -166,11 +166,11 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
+ 			return NULL;
+ 		}
+ 
+-		int32_t output_x = capture->logical_geometry.x - geometry->x;
+-		int32_t output_y = capture->logical_geometry.y - geometry->y;
+ 		int32_t output_width = capture->logical_geometry.width;
+ 		int32_t output_height = capture->logical_geometry.height;
+ 
++		int32_t raw_output_x = (capture->logical_geometry.x - geometry->x) * scale;
++		int32_t raw_output_y = (capture->logical_geometry.y - geometry->y) * scale;
+ 		int32_t raw_output_width = buffer->width;
+ 		int32_t raw_output_height = buffer->height;
+ 		apply_output_transform(capture->transform, &raw_output_width, &raw_output_height);
+@@ -194,18 +194,15 @@ pixman_image_t *render(struct grim_state *state, struct grim_box *geometry,
+ 		pixman_f_transform_translate(&out2com, NULL,
+ 			-(double)buffer->width / 2,
+ 			-(double)buffer->height / 2);
+-		pixman_f_transform_scale(&out2com, NULL,
+-			(double)output_width / raw_output_width,
+-			(double)output_height * output_flipped_y / raw_output_height);
++		pixman_f_transform_scale(&out2com, NULL, 1, output_flipped_y);
+ 		pixman_f_transform_rotate(&out2com, NULL,
+ 			round(cos(get_output_rotation(capture->transform))),
+ 			round(sin(get_output_rotation(capture->transform))));
+ 		pixman_f_transform_scale(&out2com, NULL, output_flipped_x, 1);
+ 		pixman_f_transform_translate(&out2com, NULL,
+-			(double)output_width / 2,
+-			(double)output_height / 2);
+-		pixman_f_transform_translate(&out2com, NULL, output_x, output_y);
+-		pixman_f_transform_scale(&out2com, NULL, scale, scale);
++			(double)buffer->width / 2,
++			(double)buffer->height / 2);
++		pixman_f_transform_translate(&out2com, NULL, raw_output_x, raw_output_y);
+ 
+ 		struct grim_box composite_dest;
+ 		bool grid_aligned;
+-- 
+2.54.0
